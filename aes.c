@@ -49,12 +49,12 @@ static const unsigned char rcon[14] = {
 
 static int getBit(unsigned char n, int pos);
 static unsigned char xtime(unsigned char n);
-static void rot_word(unsigned char *word);
-static void sub_word(unsigned char *word);
+static void rot_word(int *word);
+static void sub_word(int *word);
 static void sub_bytes(unsigned char state[4][NB]);
 static void shift_rows(unsigned char state[4][NB]);
 static void mix_columns(unsigned char state[4][NB]);
-static void add_round_key(unsigned char state[4][NB], unsigned char *round_key);
+static void add_round_key(unsigned char state[4][NB], int *round_key);
 static void inv_sub_bytes(unsigned char state[4][NB]);
 static void inv_shift_rows(unsigned char state[4][NB]);
 static void inv_mix_columns(unsigned char state[4][NB]);
@@ -77,133 +77,110 @@ static unsigned char xtime(unsigned char n) {
 }
 
 // RotWord：循环左移 1 字节
-static void rot_word(unsigned char *word) {
-    unsigned char temp = word[0];
-    word[0] = word[1];
-    word[1] = word[2];
-    word[2] = word[3];
-    word[3] = temp;
+static void rot_word(int *word) {
+    *word = (*word << 8) | ((*word >> 24) & 0xFF);
 }
 
 // SubWord：对 4 字节字应用 S 盒
-static void sub_word(unsigned char *word) {
-    word[0] = sbox[word[0]];
-    word[1] = sbox[word[1]];
-    word[2] = sbox[word[2]];
-    word[3] = sbox[word[3]];
-}
+static void sub_word(int *word) {
+    unsigned char bytes[4];
+        bytes[0] = (*word >> 24) & 0xFF;
+        bytes[1] = (*word >> 16) & 0xFF;
+        bytes[2] = (*word >> 8) & 0xFF;
+        bytes[3] = *word & 0xFF;
+
+        bytes[0] = sbox[bytes[0]];
+        bytes[1] = sbox[bytes[1]];
+        bytes[2] = sbox[bytes[2]];
+        bytes[3] = sbox[bytes[3]];
+
+        *word = (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
+    }
 
 // KEYEXPANSION()：标准密钥扩展
-void key_expansion(unsigned char *key, unsigned char w[4][NB * (NR + 1)], int nk) {
+void key_expansion(unsigned char *key, int w[NB * (NR + 1)], int nk) {
     int nr = (nk == 4) ? 10 : (nk == 6) ? 12 : 14; // 根据密钥长度确定轮数
-    unsigned char temp[4];
+    int temp;
     int i = 0;
-
     // 初始化前 Nk 个字
-    while (i <= nk - 1) {
-        w[0][i] = key[4 * i];
-        w[1][i] = key[4 * i + 1];
-        w[2][i] = key[4 * i + 2];
-        w[3][i] = key[4 * i + 3];
-        i = i + 1;
+    while (i <= nk - 1){
+        w[i] = (key[4 * i] << 24) | (key[4 * i + 1] << 16) | (key[4 * i + 2] << 8) | key[4 * i + 3];
+                i = i + 1;
     }
 
     // 生成剩余字
     while (i <= 4 * nr + 3) {
-        temp[0] = w[0][i - 1];
-        temp[1] = w[1][i - 1];
-        temp[2] = w[2][i - 1];
-        temp[3] = w[3][i - 1];
+            temp = w[i - 1];
 
-        if (i % nk == 0) {
-            rot_word(temp);
-            sub_word(temp);
-            temp[0] ^= rcon[i / nk - 1];
-        } else if (nk > 6 && i % nk == 4) {
-            sub_word(temp);
+            if (i % nk == 0) {
+                rot_word(&temp);
+                sub_word(&temp);
+                temp ^= (rcon[i / nk - 1] << 24);
+            } else if (nk > 6 && i % nk == 4) {
+                sub_word(&temp);
+            }
+
+            w[i] = w[i - nk] ^ temp;
+            i = i + 1;
         }
-
-        w[0][i] = w[0][i - nk] ^ temp[0];
-        w[1][i] = w[1][i - nk] ^ temp[1];
-        w[2][i] = w[2][i - nk] ^ temp[2];
-        w[3][i] = w[3][i - nk] ^ temp[3];
-        i = i + 1;
-    }
 }
 
 // KEYEXPANSIONEIC()：等效逆密码的密钥扩展
-void key_expansion_eic(unsigned char *key, unsigned char dw[4][NB * (NR + 1)], int nk) {
+void key_expansion_eic(unsigned char *key, int dw[NB * (NR + 1)], int nk) {
     int nr = (nk == 4) ? 10 : (nk == 6) ? 12 : 14;
-    unsigned char w[4][NB * (NR + 1)]; // 标准轮密钥
-    unsigned char temp[4];
+    int w[NB * (NR + 1)]; // 标准轮密钥
+    int temp;
     int i = 0;
 
     // 第一步：生成标准密钥调度 w
     while (i <= nk - 1) {
-        w[0][i] = key[4 * i];
-        w[1][i] = key[4 * i + 1];
-        w[2][i] = key[4 * i + 2];
-        w[3][i] = key[4 * i + 3];
-        dw[0][i] = w[0][i];
-        dw[1][i] = w[1][i];
-        dw[2][i] = w[2][i];
-        dw[3][i] = w[3][i];
-        i = i + 1;
-    }
-
-    while (i <= 4 * nr + 3) {
-        temp[0] = w[0][i - 1];
-        temp[1] = w[1][i - 1];
-        temp[2] = w[2][i - 1];
-        temp[3] = w[3][i - 1];
-
-        if (i % nk == 0) {
-            rot_word(temp);
-            sub_word(temp);
-            temp[0] ^= rcon[i / nk - 1];
-        } else if (nk > 6 && i % nk == 4) {
-            sub_word(temp);
+            w[i] = (key[4 * i] << 24) | (key[4 * i + 1] << 16) | (key[4 * i + 2] << 8) | key[4 * i + 3];
+            dw[i] = w[i];
+            i = i + 1;
         }
 
-        w[0][i] = w[0][i - nk] ^ temp[0];
-        w[1][i] = w[1][i - nk] ^ temp[1];
-        w[2][i] = w[2][i - nk] ^ temp[2];
-        w[3][i] = w[3][i - nk] ^ temp[3];
-        dw[0][i] = w[0][i];
-        dw[1][i] = w[1][i];
-        dw[2][i] = w[2][i];
-        dw[3][i] = w[3][i];
-        i = i + 1;
-    }
+        while (i <= 4 * nr + 3) {
+            temp = w[i - 1];
 
-    // 第二步：对中间轮密钥应用 INVMIXCOLUMNS
-    for (int round = 1; round <= nr - 1; round++) {
-        unsigned char temp_state[4][NB];
-        int i = 4 * round;
+            if (i % nk == 0) {
+                rot_word(&temp);
+                sub_word(&temp);
+                temp ^= (rcon[i / nk - 1] << 24);
+            } else if (nk > 6 && i % nk == 4) {
+                sub_word(&temp);
+            }
 
-        // 转换为状态矩阵
-        for (int c = 0; c < NB; c++) {
-            temp_state[0][c] = dw[0][i + c];
-            temp_state[1][c] = dw[1][i + c];
-            temp_state[2][c] = dw[2][i + c];
-            temp_state[3][c] = dw[3][i + c];
+            w[i] = w[i - nk] ^ temp;
+            dw[i] = w[i];
+            i = i + 1;
         }
 
-        // 应用 INVMIXCOLUMNS
-        inv_mix_columns(temp_state);
+        // 第二步：对中间轮密钥应用 INVMIXCOLUMNS
+        for (int round = 1; round <= nr - 1; round++) {
+            unsigned char temp_state[4][NB];
+            int i = 4 * round;
 
-        // 写回 dw
-        for (int c = 0; c < NB; c++) {
-            dw[0][i + c] = temp_state[0][c];
-            dw[1][i + c] = temp_state[1][c];
-            dw[2][i + c] = temp_state[2][c];
-            dw[3][i + c] = temp_state[3][c];
+            // 转换为状态矩阵
+            for (int c = 0; c < NB; c++) {
+                temp_state[0][c] = (dw[i + c] >> 24) & 0xFF;
+                temp_state[1][c] = (dw[i + c] >> 16) & 0xFF;
+                temp_state[2][c] = (dw[i + c] >> 8) & 0xFF;
+                temp_state[3][c] = dw[i + c] & 0xFF;
+            }
+
+            // 应用 INVMIXCOLUMNS
+            inv_mix_columns(temp_state);
+
+            // 写回 dw
+            for (int c = 0; c < NB; c++) {
+                dw[i + c] = (temp_state[0][c] << 24) | (temp_state[1][c] << 16) |
+                            (temp_state[2][c] << 8) | temp_state[3][c];
+            }
         }
     }
-}
 
 // SUBBYTES()
-void sub_bytes(unsigned char state[4][NB]) {
+static void sub_bytes(unsigned char state[4][NB]) {
     for (int c = 0; c < NB; c++) {
         for (int r = 0; r < 4; r++) {
             state[r][c] = sbox[state[r][c]];
@@ -212,7 +189,7 @@ void sub_bytes(unsigned char state[4][NB]) {
 }
 
 // SHIFTROWS()
-void shift_rows(unsigned char state[4][NB]) {
+static void shift_rows(unsigned char state[4][NB]) {
     unsigned char temp[4][NB];
     for (int r = 0; r < 4; r++) {
         for (int c = 0; c < NB; c++) {
@@ -227,7 +204,7 @@ void shift_rows(unsigned char state[4][NB]) {
 }
 
 // MIXCOLUMNS()
-void mix_columns(unsigned char state[4][NB]) {
+static void mix_columns(unsigned char state[4][NB]) {
     for (int c = 0; c < NB; c++) {
         unsigned char s0 = state[0][c],
                       s1 = state[1][c],
@@ -245,16 +222,18 @@ void mix_columns(unsigned char state[4][NB]) {
 }
 
 // ADDROUNDKEY()
-void add_round_key(unsigned char state[4][NB], unsigned char *round_key) {
+static void add_round_key(unsigned char state[4][NB], int *round_key) {
     for (int c = 0; c < NB; c++) {
-        for (int r = 0; r < 4; r++) {
-            state[r][c] ^= round_key[r + c * 4];
-        }
+        int word = round_key[c];
+        state[0][c] ^= (word >> 24) & 0xFF;
+        state[1][c] ^= (word >> 16) & 0xFF;
+        state[2][c] ^= (word >> 8) & 0xFF;
+        state[3][c] ^= word & 0xFF;
     }
 }
 
 // INVSUBBYTES()
-void inv_sub_bytes(unsigned char state[4][NB]) {
+static void inv_sub_bytes(unsigned char state[4][NB]) {
     for (int c = 0; c < NB; c++) {
         for (int r = 0; r < 4; r++) {
             state[r][c] = inv_sbox[state[r][c]];
@@ -263,7 +242,7 @@ void inv_sub_bytes(unsigned char state[4][NB]) {
 }
 
 // INVSHIFTROWS()
-void inv_shift_rows(unsigned char state[4][NB]) {
+static void inv_shift_rows(unsigned char state[4][NB]) {
     unsigned char temp[4][NB];
     for (int r = 0; r < 4; r++) {
         for (int c = 0; c < NB; c++) {
@@ -278,7 +257,7 @@ void inv_shift_rows(unsigned char state[4][NB]) {
 }
 
 // INVMIXCOLUMNS()
-void inv_mix_columns(unsigned char state[4][NB]) {
+static void inv_mix_columns(unsigned char state[4][NB]) {
     for (int c = 0; c < NB; c++) {
         unsigned char s0 = state[0][c],
                       s1 = state[1][c],
@@ -308,7 +287,7 @@ void inv_mix_columns(unsigned char state[4][NB]) {
 }
 
 // CIPHER()：加密函数
-void cipher(unsigned char *in, unsigned char *out, int nr, unsigned char w[4][NB * (NR + 1)]) {
+void cipher(unsigned char *in, unsigned char *out, int nr, int w[NB * (NR + 1)]) {
     unsigned char state[4][NB];
     int r, c;
 
@@ -320,20 +299,20 @@ void cipher(unsigned char *in, unsigned char *out, int nr, unsigned char w[4][NB
     }
 
     // 初始轮
-    add_round_key(state, &w[0][0]);
+    add_round_key(state, &w[0]);
 
     // 主循环
     for (int round = 1; round <= nr - 1; round++) {
         sub_bytes(state);
         shift_rows(state);
         mix_columns(state);
-        add_round_key(state, &w[0][4 * round]);
+        add_round_key(state, &w[4 * round]);
     }
 
     // 最后一轮
     sub_bytes(state);
     shift_rows(state);
-    add_round_key(state, &w[0][4 * nr]);
+    add_round_key(state, &w[4 * nr]);
 
     // 输出结果
     for (c = 0; c < NB; c++) {
@@ -344,7 +323,7 @@ void cipher(unsigned char *in, unsigned char *out, int nr, unsigned char w[4][NB
 }
 
 // INVCIPHER()：解密函数
-void inv_cipher(unsigned char *in, unsigned char *out, int nr, unsigned char w[4][NB * (NR + 1)]) {
+void inv_cipher(unsigned char *in, unsigned char *out, int nr, int w[NB * (NR + 1)]) {
     unsigned char state[4][NB];
     int r, c;
 
@@ -356,20 +335,20 @@ void inv_cipher(unsigned char *in, unsigned char *out, int nr, unsigned char w[4
     }
 
     // 初始轮
-    add_round_key(state, &w[0][4 * nr]);
+    add_round_key(state, &w[4 * nr]);
 
     // 主循环
     for (int round = nr - 1; round >= 1; round--) {
         inv_shift_rows(state);
         inv_sub_bytes(state);
-        add_round_key(state, &w[0][4 * round]);
+        add_round_key(state, &w[4 * round]);
         inv_mix_columns(state);
     }
 
     // 最后一轮
     inv_shift_rows(state);
     inv_sub_bytes(state);
-    add_round_key(state, &w[0][0]);
+    add_round_key(state, &w[0]);
 
     // 输出结果
     for (c = 0; c < NB; c++) {
@@ -380,7 +359,7 @@ void inv_cipher(unsigned char *in, unsigned char *out, int nr, unsigned char w[4
 }
 
 // EQINVCIPHER()：等效逆密码
-void eq_inv_cipher(unsigned char *in, unsigned char *out, int nr, unsigned char dw[4][NB * (NR + 1)]) {
+void eq_inv_cipher(unsigned char *in, unsigned char *out, int nr, int dw[NB * (NR + 1)]) {
     unsigned char state[4][NB];
     int r, c;
 
@@ -392,20 +371,20 @@ void eq_inv_cipher(unsigned char *in, unsigned char *out, int nr, unsigned char 
     }
 
     // 初始轮
-    add_round_key(state, &dw[0][4 * nr]);
+    add_round_key(state, &dw[4 * nr]);
 
     // 主循环
     for (int round = nr - 1; round >= 1; round--) {
         inv_sub_bytes(state);
         inv_shift_rows(state);
         inv_mix_columns(state);
-        add_round_key(state, &dw[0][4 * round]);
+        add_round_key(state, &dw[4 * round]);
     }
 
     // 最后一轮
     inv_sub_bytes(state);
     inv_shift_rows(state);
-    add_round_key(state, &dw[0][0]);
+    add_round_key(state, &dw[0]);
 
     // 输出结果
     for (c = 0; c < NB; c++) {
@@ -418,7 +397,7 @@ void eq_inv_cipher(unsigned char *in, unsigned char *out, int nr, unsigned char 
 // AES-128、AES-192、AES-256 加密接口
 void aes_encrypt(unsigned char *in, unsigned char *key, unsigned char *out, int nk) {
     int nr = (nk == 4) ? 10 : (nk == 6) ? 12 : 14;
-    unsigned char w[4][NB * (NR + 1)];
+    int w[NB * (NR + 1)];
     key_expansion(key, w, nk);
     cipher(in, out, nr, w);
 }
@@ -426,7 +405,7 @@ void aes_encrypt(unsigned char *in, unsigned char *key, unsigned char *out, int 
 // AES-128、AES-192、AES-256 解密接口（使用 INVCIPHER）
 void aes_decrypt(unsigned char *in, unsigned char *key, unsigned char *out, int nk) {
     int nr = (nk == 4) ? 10 : (nk == 6) ? 12 : 14;
-    unsigned char w[4][NB * (NR + 1)];
+    int w[NB * (NR + 1)];
     key_expansion(key, w, nk);
     inv_cipher(in, out, nr, w);
 }
@@ -434,7 +413,7 @@ void aes_decrypt(unsigned char *in, unsigned char *key, unsigned char *out, int 
 // AES-128、AES-192、AES-256 等效逆密码解密接口
 void aes_eq_decrypt(unsigned char *in, unsigned char *key, unsigned char *out, int nk) {
     int nr = (nk == 4) ? 10 : (nk == 6) ? 12 : 14;
-    unsigned char dw[4][NB * (NR + 1)];
+    int dw[NB * (NR + 1)];
     key_expansion_eic(key, dw, nk);
     eq_inv_cipher(in, out, nr, dw);
 }
