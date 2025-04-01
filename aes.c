@@ -2,6 +2,7 @@
 #include "aes.h"
 #define NB 4
 
+//typedef unsigned char byte;
 int nk;
 unsigned int w[60];
 
@@ -304,7 +305,7 @@ void cipher(unsigned char *in, unsigned char *out) {
     add_round_key(state, 0);
 
     // 主循环
-    for (int round = 1; round <= nr; round++) {
+    for (int round = 1; round < nr; round++) {
         sub_bytes(state);
         shift_rows(state);
         mix_columns(state);
