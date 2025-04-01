@@ -298,12 +298,12 @@ void cipher(unsigned char *in, unsigned char *out) {
         sub_bytes(state);
         shift_rows(state);
         mix_columns(state);
-        add_round_key(state, round * NB);
+        add_round_key(state, round);
     }
     // 最后一轮
     sub_bytes(state);
     shift_rows(state);
-    add_round_key(state, nr * NB);
+    add_round_key(state, nr);
 
     for (int c = 0; c < NB; c++) {
         for (int r = 0; r < 4; r++) {
@@ -324,13 +324,13 @@ void inv_cipher(unsigned char *in, unsigned char *out) {
     }
 
     // 初始轮
-    add_round_key(state, nr * NB);
+    add_round_key(state, nr);
 
     // 主循环
     for (int round = nr - 1; round >= 1; round--) {
         inv_shift_rows(state);
         inv_sub_bytes(state);
-        add_round_key(state, round * NB);
+        add_round_key(state, round);
         inv_mix_columns(state);
     }
 
@@ -360,13 +360,13 @@ void eq_inv_cipher(unsigned char *in, unsigned char *out) {
     }
     
     // 初始轮密钥加（使用最后一轮密钥）
-    add_round_key(state, nr * NB);
+    add_round_key(state, nr);
     
     // 主轮（省略 InvMixColumns，因为已合并到轮密钥中）
     for (int round = nr - 1; round > 0; round--) {
         inv_shift_rows(state);
         inv_sub_bytes(state);
-        add_round_key(state, round * NB);  // 使用等价轮密钥
+        add_round_key(state, round);  // 使用等价轮密钥
     }
     
     // 最后一轮
