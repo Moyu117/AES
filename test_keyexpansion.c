@@ -6,7 +6,7 @@ void print_word(int word) {
     // 使用 %08x 确保输出 8 位十六进制
     printf("%08x", word & 0xFFFFFFFF); // 确保无符号输出
 }
-
+/*
 int main() {
     // 测试密钥
     unsigned char key[16] = {
@@ -47,4 +47,51 @@ int main() {
     }
 
     return 0;
+}
+*/
+/*
+int main(){
+    unsigned char key[16] = {
+        0x8e, 0x73, 0xb0, 0xf7, 0xda, 0x0e, 0x64, 0x52,
+        0xc8, 0x10, 0xf3, 0x2b, 0x80, 0x90, 0x79, 0xe5
+    };
+    
+    int nk = 6;
+    int nr = 12; // AES-192
+    int w[NB * (NR + 1)];
+
+    // 执行密钥扩展
+    key_expansion(key, w, nk);
+
+    // 打印结果并验证
+    printf("Key Expansion Test (Nk = 6):\n");
+    for (int i = 0; i <= 4 * nr + 3; i++) {
+        printf("w[%d] = ", i);
+        print_word(w[i]);
+        printf("\n");
+    }
+
+}
+*/
+int main(){
+    unsigned char key[16] = {
+        0x8e, 0x73, 0xb0, 0xf7, 0xda, 0x0e, 0x64, 0x52,
+        0xc8, 0x10, 0xf3, 0x2b, 0x80, 0x90, 0x79, 0xe5
+    };
+    
+    int nk = 8;
+    int nr = 14; // AES-192
+    int w[NB * (NR + 1)];
+
+    // 执行密钥扩展
+    key_expansion(key, w, nk);
+
+    // 打印结果并验证
+    printf("Key Expansion Test (Nk = 6):\n");
+    for (int i = 0; i <= 4 * nr + 3; i++) {
+        printf("w[%d] = ", i);
+        print_word(w[i]);
+        printf("\n");
+    }
+
 }
