@@ -193,16 +193,21 @@ static void shift_rows(unsigned char state[4][NB]) {
 // MIXCOLUMNS()
 static void mix_columns(unsigned char state[4][NB]) {
     for (int c = 0; c < NB; c++) {
-            unsigned char s0 = state[0][c];
-            unsigned char s1 = state[1][c];
-            unsigned char s2 = state[2][c];
-            unsigned char s3 = state[3][c];
+        unsigned char s0 = state[0][c];
+        unsigned char s1 = state[1][c];
+        unsigned char s2 = state[2][c];
+        unsigned char s3 = state[3][c];
 
-            state[0][c] = xtime(s0) ^ (xtime(s1) ^ s1) ^ s2 ^ s3;  // 02*s0 + 03*s1 + 01*s2 + 01*s3
-            state[1][c] = s0 ^ xtime(s1) ^ (xtime(s2) ^ s2) ^ s3;  // 01*s0 + 02*s1 + 03*s2 + 01*s3
-            state[2][c] = s0 ^ s1 ^ xtime(s2) ^ (xtime(s3) ^ s3);  // 01*s0 + 01*s1 + 02*s2 + 03*s3
-            state[3][c] = (xtime(s0) ^ s0) ^ s1 ^ s2 ^ xtime(s3);  // 03*s0 + 01*s1 + 01*s2 + 02*s3
-        }
+        unsigned char t0 = xtime(s0) ^ (xtime(s1) ^ s1) ^ s2 ^ s3;  // 02*s0 + 03*s1 + 01*s2 + 01*s3
+        unsigned char t1 = s0 ^ xtime(s1) ^ (xtime(s2) ^ s2) ^ s3;  // 01*s0 + 02*s1 + 03*s2 + 01*s3
+        unsigned char t2 = s0 ^ s1 ^ xtime(s2) ^ (xtime(s3) ^ s3);  // 01*s0 + 01*s1 + 02*s2 + 03*s3
+        unsigned char t3 = (xtime(s0) ^ s0) ^ s1 ^ s2 ^ xtime(s3);  // 03*s0 + 01*s1 + 01*s2 + 02*s3
+
+        state[0][c] = t0;
+        state[1][c] = t1;
+        state[2][c] = t2;
+        state[3][c] = t3;
+    }
 }
 
 // ADDROUNDKEY()
@@ -254,29 +259,34 @@ static void inv_shift_rows(unsigned char state[4][NB]) {
 // INVMIXCOLUMNS()
 static void inv_mix_columns(unsigned char state[4][NB]) {
     for (int c = 0; c < NB; c++) {
-            unsigned char s0 = state[0][c];
-            unsigned char s1 = state[1][c];
-            unsigned char s2 = state[2][c];
-            unsigned char s3 = state[3][c];
+        unsigned char s0 = state[0][c];
+        unsigned char s1 = state[1][c];
+        unsigned char s2 = state[2][c];
+        unsigned char s3 = state[3][c];
 
-            unsigned char s0_2 = xtime(s0);
-            unsigned char s0_4 = xtime(s0_2);
-            unsigned char s0_8 = xtime(s0_4);
-            unsigned char s1_2 = xtime(s1);
-            unsigned char s1_4 = xtime(s1_2);
-            unsigned char s1_8 = xtime(s1_4);
-            unsigned char s2_2 = xtime(s2);
-            unsigned char s2_4 = xtime(s2_2);
-            unsigned char s2_8 = xtime(s2_4);
-            unsigned char s3_2 = xtime(s3);
-            unsigned char s3_4 = xtime(s3_2);
-            unsigned char s3_8 = xtime(s3_4);
+        unsigned char s0_2 = xtime(s0);
+        unsigned char s0_4 = xtime(s0_2);
+        unsigned char s0_8 = xtime(s0_4);
+        unsigned char s1_2 = xtime(s1);
+        unsigned char s1_4 = xtime(s1_2);
+        unsigned char s1_8 = xtime(s1_4);
+        unsigned char s2_2 = xtime(s2);
+        unsigned char s2_4 = xtime(s2_2);
+        unsigned char s2_8 = xtime(s2_4);
+        unsigned char s3_2 = xtime(s3);
+        unsigned char s3_4 = xtime(s3_2);
+        unsigned char s3_8 = xtime(s3_4);
 
-            state[0][c] = (s0_8 ^ s0_4 ^ s0_2) ^ (s1_8 ^ s1_2 ^ s1) ^ (s2_8 ^ s2_4 ^ s2) ^ (s3_8 ^ s3);
-            state[1][c] = (s0_8 ^ s0) ^ (s1_8 ^ s1_4 ^ s1_2) ^ (s2_8 ^ s2_2 ^ s2) ^ (s3_8 ^ s3_4 ^ s3);
-            state[2][c] = (s0_8 ^ s0_2 ^ s0) ^ (s1_8 ^ s1) ^ (s2_8 ^ s2_4 ^ s2_2) ^ (s3_8 ^ s3_4 ^ s3);
-            state[3][c] = (s0_8 ^ s0_4 ^ s0) ^ (s1_8 ^ s1_4 ^ s1) ^ (s2_8 ^ s2) ^ (s3_8 ^ s3_2 ^ s3);
-        }
+        unsigned char t0 = (s0_8 ^ s0_4 ^ s0_2) ^ (s1_8 ^ s1_2 ^ s1) ^ (s2_8 ^ s2_4 ^ s2) ^ (s3_8 ^ s3);
+        unsigned char t1 = (s0_8 ^ s0) ^ (s1_8 ^ s1_4 ^ s1_2) ^ (s2_8 ^ s2_2 ^ s2) ^ (s3_8 ^ s3_4 ^ s3);
+        unsigned char t2 = (s0_8 ^ s0_2 ^ s0) ^ (s1_8 ^ s1) ^ (s2_8 ^ s2_4 ^ s2_2) ^ (s3_8 ^ s3_4 ^ s3);
+        unsigned char t3 = (s0_8 ^ s0_4 ^ s0) ^ (s1_8 ^ s1_4 ^ s1) ^ (s2_8 ^ s2) ^ (s3_8 ^ s3_2 ^ s3);
+
+        state[0][c] = t0;
+        state[1][c] = t1;
+        state[2][c] = t2;
+        state[3][c] = t3;
+    }
 }
 
 // CIPHER()：加密函数
