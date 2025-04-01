@@ -52,12 +52,12 @@ static const unsigned char rcon[14] = {
 
 static int getBit(unsigned char n, int pos);
 static unsigned char xtime(unsigned char n);
-static void rot_word(int *word);
-static void sub_word(int *word);
+static int rot_word(int word);
+static int sub_word(int word);
 static void sub_bytes(unsigned char state[4][NB]);
 static void shift_rows(unsigned char state[4][NB]);
 static void mix_columns(unsigned char state[4][NB]);
-static void add_round_key(unsigned char state[4][NB], int *round_key);
+static void add_round_key(unsigned char state[4][NB], int round);
 static void inv_sub_bytes(unsigned char state[4][NB]);
 static void inv_shift_rows(unsigned char state[4][NB]);
 static void inv_mix_columns(unsigned char state[4][NB]);
@@ -208,7 +208,7 @@ static void mix_columns(unsigned char state[4][NB]) {
 // ADDROUNDKEY()
 static void add_round_key(unsigned char state[4][NB], int round) {
     for (int c = 0; c < NB; c++) {
-        unsigned int word = (unsigned int)w[round + c];
+        unsigned int word = (unsigned int)w[round * NB + c];
         state[0][c] ^= (word >> 24) & 0xFF;
         state[1][c] ^= (word >> 16) & 0xFF;
         state[2][c] ^= (word >> 8) & 0xFF;
@@ -272,10 +272,10 @@ static void inv_mix_columns(unsigned char state[4][NB]) {
             unsigned char s3_4 = xtime(s3_2);
             unsigned char s3_8 = xtime(s3_4);
 
-            state[0][c] = (s0_8 ^ s0_4 ^ s0_2) ^ (s1_8 ^ s1_2 ^ s1) ^ (s2_8 ^ s2_4 ^ s2) ^ (s3_8 ^ s3);  // 0e*s0 + 0b*s1 + 0d*s2 + 09*s3
-            state[1][c] = (s0_8 ^ s0) ^ (s1_8 ^ s1_4 ^ s1_2) ^ (s2_8 ^ s2_2 ^ s2) ^ (s3_8 ^ s3_4 ^ s3);  // 09*s0 + 0e*s1 + 0b*s2 + 0d*s3
-            state[2][c] = (s0_8 ^ s0_2 ^ s0) ^ (s1_8 ^ s1) ^ (s2_8 ^ s2_4 ^ s2_2) ^ (s3_8 ^ s3_4 ^ s3);  // 0d*s0 + 09*s1 + 0e*s2 + 0b*s3
-            state[3][c] = (s0_8 ^ s0_4 ^ s0) ^ (s1_8 ^ s1_4 ^ s1) ^ (s2_8 ^ s2) ^ (s3_8 ^ s3_2 ^ s3);  // 0b*s0 + 0d*s1 + 09*s2 + 0e*s3
+            state[0][c] = (s0_8 ^ s0_4 ^ s0_2) ^ (s1_8 ^ s1_2 ^ s1) ^ (s2_8 ^ s2_4 ^ s2) ^ (s3_8 ^ s3);
+            state[1][c] = (s0_8 ^ s0) ^ (s1_8 ^ s1_4 ^ s1_2) ^ (s2_8 ^ s2_2 ^ s2) ^ (s3_8 ^ s3_4 ^ s3);
+            state[2][c] = (s0_8 ^ s0_2 ^ s0) ^ (s1_8 ^ s1) ^ (s2_8 ^ s2_4 ^ s2_2) ^ (s3_8 ^ s3_4 ^ s3);
+            state[3][c] = (s0_8 ^ s0_4 ^ s0) ^ (s1_8 ^ s1_4 ^ s1) ^ (s2_8 ^ s2) ^ (s3_8 ^ s3_2 ^ s3);
         }
 }
 
@@ -352,42 +352,29 @@ void eq_inv_cipher(unsigned char *in, unsigned char *out) {
     unsigned char state[4][NB];
     int nr = (nk == 4) ? 10 : (nk == 6) ? 12 : 14;
     
-    // 预计算等价轮密钥（对 w 应用 InvMixColumns）
-    int w_eq[60];
-    for (int i = 0; i < (nr + 1) * NB; i++) {
-        w_eq[i] = w[i];
-    }
-    for (int round = 1; round < nr; round++) {
-        unsigned char temp_state[4][NB] = {{0}};
-        for (int c = 0; c < NB; c++) {
-            unsigned int word = (unsigned int)w_eq[round * NB + c];
-            temp_state[0][c] = (word >> 24) & 0xFF;
-            temp_state[1][c] = (word >> 16) & 0xFF;
-            temp_state[2][c] = (word >> 8) & 0xFF;
-            temp_state[3][c] = word & 0xFF;
-        }
-        inv_mix_columns(temp_state);
-        for (int c = 0; c < NB; c++) {
-            w_eq[round * NB + c] = (temp_state[0][c] << 24) | (temp_state[1][c] << 16) | (temp_state[2][c] << 8) | temp_state[3][c];
+    // 输入到状态
+    for (int c = 0; c < NB; c++) {
+        for (int r = 0; r < 4; r++) {
+            state[r][c] = in[r + c * 4];
         }
     }
     
-    // 初始轮
+    // 初始轮密钥加（使用最后一轮密钥）
     add_round_key(state, nr * NB);
-
-    // 主循环
-    for (int round = nr - 1; round >= 1; round--) {
+    
+    // 主轮（省略 InvMixColumns，因为已合并到轮密钥中）
+    for (int round = nr - 1; round > 0; round--) {
         inv_shift_rows(state);
         inv_sub_bytes(state);
-        add_round_key(state, round * NB);
+        add_round_key(state, round * NB);  // 使用等价轮密钥
     }
-
+    
     // 最后一轮
-    inv_sub_bytes(state);
     inv_shift_rows(state);
+    inv_sub_bytes(state);
     add_round_key(state, 0);
-
-    // 输出结果
+    
+    // 状态到输出
     for (int c = 0; c < NB; c++) {
         for (int r = 0; r < 4; r++) {
             out[r + c * 4] = state[r][c];
