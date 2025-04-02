@@ -1,0 +1,45 @@
+./aes_app ecb encrypt 2b7e151628aed2a6abf7158809cf4f3c 6bc1bee22e409f96e93d7e117393172a
+mode: ecb
+operation: encrypt
+key: 2b7e151628aed2a6abf7158809cf4f3c（16字节=128位）
+plaintext: 6bc1bee22e409f96e93d7e117393172a（16字节=128位，正好1个块）
+expect:3ad77bb40d7a3660a89ecaf32466ef97
+
+./aes_app ecb decrypt 2b7e151628aed2a6abf7158809cf4f3c 3ad77bb40d7a3660a89ecaf32466ef97
+6bc1bee22e409f96e93d7e117393172a
+
+./aes_app cbc encrypt 2b7e151628aed2a6abf7158809cf4f3c 000102030405060708090a0b0c0d0e0f 6bc1bee22e409f96e93d7e117393172a
+mode: cbc
+operation: encrypt
+key:2b7e151628aed2a6abf7158809cf4f3c
+iv: 000102030405060708090a0b0c0d0e0f（16字节=128位）
+plaintext: 6bc1bee22e409f96e93d7e117393172a
+expect:7649abac8119b246cee98e9b12e9197d
+
+./aes_app cbc decrypt 2b7e151628aed2a6abf7158809cf4f3c 000102030405060708090a0b0c0d0e0f 7649abac8119b246cee98e9b12e9197d
+expect:6bc1bee22e409f96e93d7e117393172a
+
+./aes_app cmac generate 2b7e151628aed2a6abf7158809cf4f3c 6bc1bee22e409f96e93d7e117393172a
+mode: cmac
+operation: generate
+key: 同上
+msg: 同上
+example:070a16b46b4d4144f79bdd9dd04a287c
+
+./aes_app cmac verify 2b7e151628aed2a6abf7158809cf4f3c 6bc1bee22e409f96e93d7e117393172a 070a16b46b4d4144f79bdd9dd04a287c
+expect:CMAC verify => OK
+
+
+
+kali
+ecb enc  
+openssl enc -aes-128-ecb -K 2b7e151628aed2a6abf7158809cf4f3c -in plaintext.bin -out ciphertext.bin -nopad
+ecb dec
+openssl enc -d -aes-128-ecb -K 2b7e151628aed2a6abf7158809cf4f3c -in ciphertext.bin -out decrypted.bin -nopad
+CBC enc
+openssl enc -aes-128-cbc -K 2b7e151628aed2a6abf7158809cf4f3c -iv 000102030405060708090a0b0c0d0e0f -in plaintext.bin -out ciphertext.bin -nopad
+CBC 解密
+openssl enc -d -aes-128-cbc -K 2b7e151628aed2a6abf7158809cf4f3c -iv 000102030405060708090a0b0c0d0e0f -in ciphertext.bin -out decrypted.bin -nopad
+CMAC 生成
+openssl mac -mac cmac -macopt cipher:aes-128-cbc -macopt hexkey:2b7e151628aed2a6abf7158809cf4f3c -in plaintext.bin
+

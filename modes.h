@@ -1,18 +1,14 @@
-// modes.h
 #ifndef MODES_H
 #define MODES_H
 
-#define NB 4
-int nk;
-unsigned int w[60];
+#include <stddef.h>
 
-void ecb_encrypt(unsigned char *in, unsigned char *out, int len);
-void ecb_decrypt(unsigned char *in, unsigned char *out, int len);
-void cbc_encrypt(unsigned char *in, unsigned char *out, int len, unsigned char *iv);
-void cbc_decrypt(unsigned char *in, unsigned char *out, int len, unsigned char *iv);
-void cfb_encrypt(unsigned char *in, unsigned char *out, int len, unsigned char *iv);
-void cfb_decrypt(unsigned char *in, unsigned char *out, int len, unsigned char *iv);
-void ofb_encrypt_decrypt(unsigned char *in, unsigned char *out, int len, unsigned char *iv);
-int compare_blocks(unsigned char *block1, unsigned char *block2);
+// 这里放置对外可见的函数声明
+void ECB_Encrypt(const unsigned char *K, const unsigned char *P, unsigned char *C, unsigned int num_blocks);
+void ECB_Decrypt(const unsigned char *K, const unsigned char *C, unsigned char *P, unsigned int num_blocks);
+void CBC_Encrypt(const unsigned char *K, const unsigned char *IV, const unsigned char *P, unsigned char *C, unsigned int num_blocks);
+void CBC_Decrypt(const unsigned char *K, const unsigned char *IV, const unsigned char *C, unsigned char *P, unsigned int num_blocks);
+void CMAC(const unsigned char *K, const unsigned char *M, unsigned int Mlen, unsigned int Tlen, unsigned char *T);
+int VER(const unsigned char *K, const unsigned char *M, unsigned int Mlen, unsigned int Tlen, const unsigned char *T_received);
 
 #endif

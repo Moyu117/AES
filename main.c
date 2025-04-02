@@ -1,312 +1,223 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "aes.h"
 #include "modes.h"
 
-void print_block(unsigned char *block) {
-    for (int i = 0; i < 16; i++) {
-        printf("%02x ", block[i]);
+// 辅助函数：以十六进制形式打印数据
+static void print_hex(const char *label, const unsigned char *data, size_t len) {
+    printf("%s: ", label);
+    for (size_t i = 0; i < len; i++) {
+        printf("%02x", data[i]);
     }
     printf("\n");
 }
 
-int main() {
-    // 明文（4 个 128 位块）
-    unsigned char plaintext[64] = {
-        0x6b, 0xc1, 0xbe, 0xe2, 0x2e, 0x40, 0x9f, 0x96,
-        0xe9, 0x3d, 0x7e, 0x11, 0x73, 0x93, 0x17, 0x2a,
-        0xae, 0x2d, 0x8a, 0x57, 0x1e, 0x03, 0xac, 0x9c,
-        0x9e, 0xb7, 0x6f, 0xac, 0x45, 0xaf, 0x8e, 0x51,
-        0x30, 0xc8, 0x1c, 0x46, 0xa3, 0x5c, 0xe4, 0x11,
-        0xe5, 0xfb, 0xc1, 0x19, 0x1a, 0x0a, 0x52, 0xef,
-        0xf6, 0x9f, 0x24, 0x45, 0xdf, 0x4f, 0x9b, 0x17,
-        0xad, 0x2b, 0x41, 0x7b, 0xe6, 0x6c, 0x37, 0x10
-    };
-    unsigned char ciphertext[64];
-    unsigned char decrypted[64];
-
-    // === ECB-AES128 ===
-    printf("=== ECB-AES128.Encrypt ===\n");
-    unsigned char key_128[16] = {
-        0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6,
-        0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c
-    };
-    unsigned char expected_ecb_128_encrypt[64] = {
-        0x3a, 0xd7, 0x7b, 0xb4, 0x0d, 0x7a, 0x36, 0x60,
-        0xa8, 0x9e, 0xca, 0xf3, 0x24, 0x66, 0xef, 0x97,
-        0xf5, 0xd3, 0xd5, 0x85, 0x03, 0xb9, 0x69, 0x9d,
-        0xe7, 0x85, 0x89, 0x5a, 0x96, 0xfd, 0xba, 0xaf,
-        0x43, 0xb1, 0xcd, 0x7f, 0x59, 0x8e, 0xce, 0x23,
-        0x88, 0x1b, 0x00, 0xe3, 0xed, 0x03, 0x06, 0x88,
-        0x7b, 0x0c, 0x78, 0x5e, 0x27, 0xe8, 0xad, 0x3f,
-        0x82, 0x23, 0x20, 0x71, 0x04, 0x72, 0x5d, 0xd4
-    };
-
-    nk = 4;  // AES-128
-    key_expansion(key_128);
-    ecb_encrypt(plaintext, ciphertext, 64);
-    for (int i = 0; i < 4; i++) {
-        printf("Block #%d Ciphertext: ", i + 1);
-        print_block(ciphertext + i * 16);
+// 辅助函数：解析固定长度的十六进制字符串到二进制，要求输出长度为 out_len 字节
+static int parse_hex(const char *hexstr, unsigned char *out, size_t out_len) {
+    if (strlen(hexstr) != out_len * 2)
+        return 0;
+    for (size_t i = 0; i < out_len; i++) {
+        unsigned int val;
+        if (sscanf(hexstr + 2*i, "%2x", &val) != 1)
+            return 0;
+        out[i] = (unsigned char)val;
     }
-    int pass_ecb_128_encrypt = 1;
-    for (int i = 0; i < 4; i++) {
-        if (!compare_blocks(ciphertext + i * 16, expected_ecb_128_encrypt + i * 16)) {
-            pass_ecb_128_encrypt = 0;
-            break;
+    return 1;
+}
+
+// 辅助函数：解析任意长度的十六进制字符串（动态分配内存，返回指针，并把长度保存到 binlen）
+static unsigned char *parse_hex_dynamic(const char *hexstr, size_t *binlen) {
+    size_t hexlen = strlen(hexstr);
+    if (hexlen % 2 != 0) {
+        return NULL;
+    }
+    *binlen = hexlen / 2;
+    unsigned char *buf = (unsigned char*)malloc(*binlen);
+    if (!buf) return NULL;
+    for (size_t i = 0; i < *binlen; i++) {
+        unsigned int val;
+        if (sscanf(hexstr + 2*i, "%2x", &val) != 1) {
+            free(buf);
+            return NULL;
+        }
+        buf[i] = (unsigned char)val;
+    }
+    return buf;
+}
+
+static void usage() {
+    printf("Usage:\n");
+    printf("  ./aes_app mode operation key [iv] data\n");
+    printf("\nModes:\n");
+    printf("  ecb : ECB mode\n");
+    printf("  cbc : CBC mode (需要额外指定 IV)\n");
+    printf("  cmac: CMAC (即 CBC-MAC)\n");
+    printf("\nOperations:\n");
+    printf("  encrypt : 加密\n");
+    printf("  decrypt : 解密\n");
+    printf("  generate: 生成 CMAC\n");
+    printf("  verify  : 校验 CMAC\n");
+    printf("\nKey: 必须为 32/48/64 个 hex 字符，分别对应 128/192/256 位 AES\n");
+    printf("For CBC: IV 必须为 32 个 hex 字符（16 字节）\n");
+    printf("Data: 对于 ECB/CBC，加密/解密的数据长度必须是 16 字节的倍数（即 32 个 hex 字符的倍数）；\n");
+    printf("      CMAC 的消息长度可任意，默认生成 128 位（16 字节）的 MAC。\n");
+}
+
+int main(int argc, char *argv[]) {
+    if (argc < 5) {
+        usage();
+        return 1;
+    }
+    
+    const char *mode = argv[1];       // "ecb", "cbc", "cmac"
+    const char *operation = argv[2];  // "encrypt", "decrypt", "generate", "verify"
+    const char *hex_key = argv[3];
+
+    // 解析密钥，检查长度
+    size_t key_len = strlen(hex_key) / 2;
+    if (key_len != 16 && key_len != 24 && key_len != 32) {
+        fprintf(stderr, "Key length must be 16, 24 or 32 bytes (32, 48, or 64 hex chars).\n");
+        return 1;
+    }
+    // 根据密钥长度设置全局变量 nk
+    if (key_len == 16)
+        nk = 4;
+    else if (key_len == 24)
+        nk = 6;
+    else if (key_len == 32)
+        nk = 8;
+    
+    unsigned char key[32]; // 最大支持32字节密钥
+    if (!parse_hex(hex_key, key, key_len)) {
+        fprintf(stderr, "Key parse error.\n");
+        return 1;
+    }
+    
+    if (strcmp(mode, "ecb") == 0) {
+        if (argc != 5) {
+            usage();
+            return 1;
+        }
+        size_t data_len;
+        unsigned char *data = parse_hex_dynamic(argv[4], &data_len);
+        if (!data) {
+            fprintf(stderr, "Data parse error.\n");
+            return 1;
+        }
+        if (data_len % 16 != 0) {
+            fprintf(stderr, "For ECB mode, data length must be a multiple of 16 bytes.\n");
+            free(data);
+            return 1;
+        }
+        unsigned char *outbuf = (unsigned char*)malloc(data_len);
+        if (!outbuf) { free(data); return 1; }
+        
+        if (strcmp(operation, "encrypt") == 0) {
+            ECB_Encrypt(key, data, outbuf, data_len / 16);
+        } else if (strcmp(operation, "decrypt") == 0) {
+            ECB_Decrypt(key, data, outbuf, data_len / 16);
+        } else {
+            usage();
+            free(data); free(outbuf);
+            return 1;
+        }
+        print_hex("Output", outbuf, data_len);
+        free(data);
+        free(outbuf);
+    }
+    else if (strcmp(mode, "cbc") == 0) {
+        if (argc != 6) {
+            usage();
+            return 1;
+        }
+        const char *hex_iv = argv[4];
+        if (strlen(hex_iv) != 32) {
+            fprintf(stderr, "IV must be 16 bytes (32 hex chars).\n");
+            return 1;
+        }
+        unsigned char iv[16];
+        if (!parse_hex(hex_iv, iv, 16)) {
+            fprintf(stderr, "IV parse error.\n");
+            return 1;
+        }
+        size_t data_len;
+        unsigned char *data = parse_hex_dynamic(argv[5], &data_len);
+        if (!data) {
+            fprintf(stderr, "Data parse error.\n");
+            return 1;
+        }
+        if (data_len % 16 != 0) {
+            fprintf(stderr, "For CBC mode, data length must be a multiple of 16 bytes.\n");
+            free(data);
+            return 1;
+        }
+        unsigned char *outbuf = (unsigned char*)malloc(data_len);
+        if (!outbuf) { free(data); return 1; }
+        
+        if (strcmp(operation, "encrypt") == 0) {
+            CBC_Encrypt(key, iv, data, outbuf, data_len / 16);
+        } else if (strcmp(operation, "decrypt") == 0) {
+            CBC_Decrypt(key, iv, data, outbuf, data_len / 16);
+        } else {
+            usage();
+            free(data); free(outbuf);
+            return 1;
+        }
+        print_hex("Output", outbuf, data_len);
+        free(data);
+        free(outbuf);
+    }
+    else if (strcmp(mode, "cmac") == 0) {
+        if (strcmp(operation, "generate") == 0) {
+            if (argc != 5) {
+                usage();
+                return 1;
+            }
+            size_t msg_len;
+            unsigned char *msg = parse_hex_dynamic(argv[4], &msg_len);
+            if (!msg) {
+                fprintf(stderr, "Message parse error.\n");
+                return 1;
+            }
+            unsigned char tag[16]; // 默认生成 128 位（16 字节）的 MAC
+            CMAC(key, msg, msg_len, 128, tag);
+            print_hex("CMAC", tag, 16);
+            free(msg);
+        } else if (strcmp(operation, "verify") == 0) {
+            if (argc != 6) {
+                usage();
+                return 1;
+            }
+            size_t msg_len;
+            unsigned char *msg = parse_hex_dynamic(argv[4], &msg_len);
+            if (!msg) {
+                fprintf(stderr, "Message parse error.\n");
+                return 1;
+            }
+            if (strlen(argv[5]) != 32) {
+                fprintf(stderr, "Tag must be 16 bytes (32 hex chars).\n");
+                free(msg);
+                return 1;
+            }
+            unsigned char tag[16];
+            if (!parse_hex(argv[5], tag, 16)) {
+                fprintf(stderr, "Tag parse error.\n");
+                free(msg);
+                return 1;
+            }
+            int valid = VER(key, msg, msg_len, 128, tag);
+            printf("CMAC verify => %s\n", valid ? "OK" : "FAIL");
+            free(msg);
+        } else {
+            usage();
+            return 1;
         }
     }
-    printf("ECB-AES128.Encrypt Test %s\n", pass_ecb_128_encrypt ? "PASSED" : "FAILED");
-
-    printf("=== ECB-AES128.Decrypt ===\n");
-    key_expansion(key_128);
-    ecb_decrypt(ciphertext, decrypted, 64);
-    for (int i = 0; i < 4; i++) {
-        printf("Block #%d Decrypted: ", i + 1);
-        print_block(decrypted + i * 16);
+    else {
+        usage();
+        return 1;
     }
-    int pass_ecb_128_decrypt = 1;
-    for (int i = 0; i < 4; i++) {
-        if (!compare_blocks(decrypted + i * 16, plaintext + i * 16)) {
-            pass_ecb_128_decrypt = 0;
-            break;
-        }
-    }
-    printf("ECB-AES128.Decrypt Test %s\n", pass_ecb_128_decrypt ? "PASSED" : "FAILED");
-
-    // === ECB-AES192 ===
-    printf("=== ECB-AES192.Encrypt ===\n");
-    unsigned char key_192[24] = {
-        0x8e, 0x73, 0xb0, 0xf7, 0xda, 0x0e, 0x64, 0x52,
-        0xc8, 0x10, 0xf3, 0x2b, 0x80, 0x90, 0x79, 0xe5,
-        0x62, 0xf8, 0xea, 0xd2, 0x52, 0x2c, 0x6b, 0x7b
-    };
-    unsigned char expected_ecb_192_encrypt[64] = {
-        0xbd, 0x33, 0x4f, 0x1d, 0x6e, 0x45, 0xf2, 0x5f,
-        0xf7, 0x12, 0xa2, 0x14, 0x57, 0x1f, 0xa5, 0xcc,
-        0x97, 0x41, 0x04, 0x84, 0x6d, 0x0a, 0xd3, 0xad,
-        0x77, 0x34, 0xec, 0xb3, 0xec, 0xee, 0x4e, 0xef,
-        0xef, 0x7a, 0xfd, 0x22, 0x70, 0xe2, 0xe6, 0x0a,
-        0xdc, 0xe0, 0xba, 0x2f, 0xac, 0xe6, 0x44, 0x4e,
-        0x9a, 0x4b, 0x41, 0xba, 0x73, 0x8d, 0x6c, 0x72,
-        0xfb, 0x16, 0x69, 0x16, 0x03, 0xc1, 0x8e, 0x0e
-    };
-
-    nk = 6;  // AES-192
-    key_expansion(key_192);
-    ecb_encrypt(plaintext, ciphertext, 64);
-    for (int i = 0; i < 4; i++) {
-        printf("Block #%d Ciphertext: ", i + 1);
-        print_block(ciphertext + i * 16);
-    }
-    int pass_ecb_192_encrypt = 1;
-    for (int i = 0; i < 4; i++) {
-        if (!compare_blocks(ciphertext + i * 16, expected_ecb_192_encrypt + i * 16)) {
-            pass_ecb_192_encrypt = 0;
-            break;
-        }
-    }
-    printf("ECB-AES192.Encrypt Test %s\n", pass_ecb_192_encrypt ? "PASSED" : "FAILED");
-
-    printf("=== ECB-AES192.Decrypt ===\n");
-    key_expansion(key_192);
-    ecb_decrypt(ciphertext, decrypted, 64);
-    for (int i = 0; i < 4; i++) {
-        printf("Block #%d Decrypted: ", i + 1);
-        print_block(decrypted + i * 16);
-    }
-    int pass_ecb_192_decrypt = 1;
-    for (int i = 0; i < 4; i++) {
-        if (!compare_blocks(decrypted + i * 16, plaintext + i * 16)) {
-            pass_ecb_192_decrypt = 0;
-            break;
-        }
-    }
-    printf("ECB-AES192.Decrypt Test %s\n", pass_ecb_192_decrypt ? "PASSED" : "FAILED");
-
-    // === ECB-AES256 ===
-    printf("=== ECB-AES256.Encrypt ===\n");
-    unsigned char key_256[32] = {
-        0x60, 0x3d, 0xeb, 0x10, 0x15, 0xca, 0x71, 0xbe,
-        0x2b, 0x73, 0xae, 0xf0, 0x85, 0x7d, 0x77, 0x81,
-        0x1f, 0x35, 0x2c, 0x07, 0x3b, 0x61, 0x08, 0xd7,
-        0x2d, 0x98, 0x10, 0xa3, 0x09, 0x14, 0xdf, 0xf4
-    };
-    unsigned char expected_ecb_256_encrypt[64] = {
-        0xf3, 0xee, 0xd1, 0xbd, 0xb5, 0xd2, 0xa0, 0x3c,
-        0x06, 0x4b, 0x5a, 0x7e, 0x3d, 0xb1, 0x81, 0xf8,
-        0x59, 0x1c, 0xcb, 0x10, 0xd4, 0x10, 0xed, 0x26,
-        0xdc, 0x5b, 0xa7, 0x4a, 0x31, 0x36, 0x28, 0x70,
-        0xb6, 0xed, 0x21, 0xb9, 0x9c, 0xa6, 0xf4, 0xf9,
-        0xf1, 0x53, 0xe7, 0xb1, 0xbe, 0xaf, 0xed, 0x1d,
-        0x23, 0x30, 0x4b, 0x7a, 0x39, 0xf9, 0xf3, 0xff,
-        0x06, 0x7d, 0x8d, 0x8f, 0x9e, 0x24, 0xec, 0xc7
-    };
-
-    nk = 8;  // AES-256
-    key_expansion(key_256);
-    ecb_encrypt(plaintext, ciphertext, 64);
-    for (int i = 0; i < 4; i++) {
-        printf("Block #%d Ciphertext: ", i + 1);
-        print_block(ciphertext + i * 16);
-    }
-    int pass_ecb_256_encrypt = 1;
-    for (int i = 0; i < 4; i++) {
-        if (!compare_blocks(ciphertext + i * 16, expected_ecb_256_encrypt + i * 16)) {
-            pass_ecb_256_encrypt = 0;
-            break;
-        }
-    }
-    printf("ECB-AES256.Encrypt Test %s\n", pass_ecb_256_encrypt ? "PASSED" : "FAILED");
-
-    printf("=== ECB-AES256.Decrypt ===\n");
-    key_expansion(key_256);
-    ecb_decrypt(ciphertext, decrypted, 64);
-    for (int i = 0; i < 4; i++) {
-        printf("Block #%d Decrypted: ", i + 1);
-        print_block(decrypted + i * 16);
-    }
-    int pass_ecb_256_decrypt = 1;
-    for (int i = 0; i < 4; i++) {
-        if (!compare_blocks(decrypted + i * 16, plaintext + i * 16)) {
-            pass_ecb_256_decrypt = 0;
-            break;
-        }
-    }
-    printf("ECB-AES256.Decrypt Test %s\n", pass_ecb_256_decrypt ? "PASSED" : "FAILED");
-
-    // === CBC-AES128 ===
-    printf("=== CBC-AES128.Encrypt ===\n");
-    unsigned char iv[16] = {
-        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
-        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f
-    };
-    unsigned char expected_cbc_128_encrypt[48] = {
-        0x76, 0x49, 0xab, 0xac, 0x81, 0x19, 0xb2, 0x46,
-        0xce, 0xe9, 0x8e, 0x9b, 0x12, 0xe9, 0x19, 0x7d,
-        0x50, 0x86, 0xcb, 0x9b, 0x50, 0x72, 0x19, 0xee,
-        0x95, 0xdb, 0x11, 0x3a, 0x91, 0x76, 0x78, 0xb2,
-        0x73, 0xbe, 0xd6, 0xb8, 0xe3, 0xc1, 0x74, 0x3b,
-        0x71, 0x16, 0xe6, 0x9e, 0x22, 0x22, 0x95, 0x16
-    };
-
-    nk = 4;  // AES-128
-    key_expansion(key_128);
-    cbc_encrypt(plaintext, ciphertext, 48, iv);
-    for (int i = 0; i < 3; i++) {
-        printf("Block #%d Ciphertext: ", i + 1);
-        print_block(ciphertext + i * 16);
-    }
-    int pass_cbc_128_encrypt = 1;
-    for (int i = 0; i < 3; i++) {
-        if (!compare_blocks(ciphertext + i * 16, expected_cbc_128_encrypt + i * 16)) {
-            pass_cbc_128_encrypt = 0;
-            break;
-        }
-    }
-    printf("CBC-AES128.Encrypt Test %s\n", pass_cbc_128_encrypt ? "PASSED" : "FAILED");
-
-    printf("=== CBC-AES128.Decrypt ===\n");
-    key_expansion(key_128);
-    cbc_decrypt(ciphertext, decrypted, 48, iv);
-    for (int i = 0; i < 3; i++) {
-        printf("Block #%d Decrypted: ", i + 1);
-        print_block(decrypted + i * 16);
-    }
-    int pass_cbc_128_decrypt = 1;
-    for (int i = 0; i < 3; i++) {
-        if (!compare_blocks(decrypted + i * 16, plaintext + i * 16)) {
-            pass_cbc_128_decrypt = 0;
-            break;
-        }
-    }
-    printf("CBC-AES128.Decrypt Test %s\n", pass_cbc_128_decrypt ? "PASSED" : "FAILED");
-
-    // === CBC-AES192 ===
-    printf("=== CBC-AES192.Encrypt ===\n");
-    unsigned char expected_cbc_192_encrypt[48] = {
-        0x4f, 0x02, 0x1d, 0xb2, 0x43, 0xbc, 0x63, 0x3d,
-        0x71, 0x78, 0x18, 0x3a, 0x9f, 0xa0, 0x71, 0xe8,
-        0xb4, 0xd9, 0xad, 0xa9, 0xad, 0x7d, 0xed, 0xf4,
-        0xe5, 0xe7, 0x38, 0x76, 0x3f, 0x69, 0x14, 0x5a,
-        0x57, 0x1b, 0x24, 0x20, 0x12, 0xfb, 0x7a, 0xe0,
-        0x7f, 0xa9, 0xba, 0xac, 0x3d, 0xf1, 0x02, 0xe0
-    };
-
-    nk = 6;  // AES-192
-    key_expansion(key_192);
-    cbc_encrypt(plaintext, ciphertext, 48, iv);
-    for (int i = 0; i < 3; i++) {
-        printf("Block #%d Ciphertext: ", i + 1);
-        print_block(ciphertext + i * 16);
-    }
-    int pass_cbc_192_encrypt = 1;
-    for (int i = 0; i < 3; i++) {
-        if (!compare_blocks(ciphertext + i * 16, expected_cbc_192_encrypt + i * 16)) {
-            pass_cbc_192_encrypt = 0;
-            break;
-        }
-    }
-    printf("CBC-AES192.Encrypt Test %s\n", pass_cbc_192_encrypt ? "PASSED" : "FAILED");
-
-    printf("=== CBC-AES192.Decrypt ===\n");
-    key_expansion(key_192);
-    cbc_decrypt(ciphertext, decrypted, 48, iv);
-    for (int i = 0; i < 3; i++) {
-        printf("Block #%d Decrypted: ", i + 1);
-        print_block(decrypted + i * 16);
-    }
-    int pass_cbc_192_decrypt = 1;
-    for (int i = 0; i < 3; i++) {
-        if (!compare_blocks(decrypted + i * 16, plaintext + i * 16)) {
-            pass_cbc_192_decrypt = 0;
-            break;
-        }
-    }
-    printf("CBC-AES192.Decrypt Test %s\n", pass_cbc_192_decrypt ? "PASSED" : "FAILED");
-
-    // === CBC-AES256 ===
-    printf("=== CBC-AES256.Encrypt ===\n");
-    unsigned char expected_cbc_256_encrypt[48] = {
-        0xf5, 0x8c, 0x4c, 0x04, 0xd6, 0xe5, 0xf1, 0xba,
-        0x77, 0x9e, 0xab, 0xfb, 0x5f, 0x7b, 0xfb, 0xd6,
-        0x9c, 0xfc, 0x4e, 0x96, 0x7e, 0xdb, 0x80, 0x8d,
-        0x67, 0x9f, 0x77, 0x7b, 0xc6, 0x70, 0x2c, 0x7d,
-        0x39, 0xf2, 0x33, 0x69, 0xa9, 0xd9, 0xba, 0xcf,
-        0xa5, 0x30, 0xe2, 0x63, 0x04, 0x23, 0x14, 0x61
-    };
-
-    nk = 8;  // AES-256
-    key_expansion(key_256);
-    cbc_encrypt(plaintext, ciphertext, 48, iv);
-    for (int i = 0; i < 3; i++) {
-        printf("Block #%d Ciphertext: ", i + 1);
-        print_block(ciphertext + i * 16);
-    }
-    int pass_cbc_256_encrypt = 1;
-    for (int i = 0; i < 3; i++) {
-        if (!compare_blocks(ciphertext + i * 16, expected_cbc_256_encrypt + i * 16)) {
-            pass_cbc_256_encrypt = 0;
-            break;
-        }
-    }
-    printf("CBC-AES256.Encrypt Test %s\n", pass_cbc_256_encrypt ? "PASSED" : "FAILED");
-
-    printf("=== CBC-AES256.Decrypt ===\n");
-    key_expansion(key_256);
-    cbc_decrypt(ciphertext, decrypted, 48, iv);
-    for (int i = 0; i < 3; i++) {
-        printf("Block #%d Decrypted: ", i + 1);
-        print_block(decrypted + i * 16);
-    }
-    int pass_cbc_256_decrypt = 1;
-    for (int i = 0; i < 3; i++) {
-        if (!compare_blocks(decrypted + i * 16, plaintext + i * 16)) {
-            pass_cbc_256_decrypt = 0;
-            break;
-        }
-    }
-    printf("CBC-AES256.Decrypt Test %s\n", pass_cbc_256_decrypt ? "PASSED" : "FAILED");
-
+    
     return 0;
 }

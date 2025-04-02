@@ -258,6 +258,40 @@ static void inv_shift_rows(unsigned char state[4][NB]) {
 }
 
 // INVMIXCOLUMNS()
+// static void inv_mix_columns(unsigned char state[4][NB]) {
+//     for (int c = 0; c < NB; c++) {
+//         unsigned char s0 = state[0][c];
+//         unsigned char s1 = state[1][c];
+//         unsigned char s2 = state[2][c];
+//         unsigned char s3 = state[3][c];
+
+//         unsigned char s0_2 = xtime(s0);
+//         unsigned char s0_4 = xtime(s0_2);
+//         unsigned char s0_8 = xtime(s0_4);
+//         unsigned char s1_2 = xtime(s1);
+//         unsigned char s1_4 = xtime(s1_2);
+//         unsigned char s1_8 = xtime(s1_4);
+//         unsigned char s2_2 = xtime(s2);
+//         unsigned char s2_4 = xtime(s2_2);
+//         unsigned char s2_8 = xtime(s2_4);
+//         unsigned char s3_2 = xtime(s3);
+//         unsigned char s3_4 = xtime(s3_2);
+//         unsigned char s3_8 = xtime(s3_4);
+
+//         unsigned char t0 = (s0_8 ^ s0_4 ^ s0_2) ^ (s1_8 ^ s1_2 ^ s1) ^ (s2_8 ^ s2_4 ^ s2) ^ (s3_8 ^ s3);
+//         unsigned char t1 = (s0_8 ^ s0) ^ (s1_8 ^ s1_4 ^ s1_2) ^ (s2_8 ^ s2_2 ^ s2) ^ (s3_8 ^ s3_4 ^ s3);
+//         unsigned char t2 = (s0_8 ^ s0_2 ^ s0) ^ (s1_8 ^ s1) ^ (s2_8 ^ s2_4 ^ s2_2) ^ (s3_8 ^ s3_4 ^ s3);
+//         unsigned char t3 = (s0_8 ^ s0_4 ^ s0) ^ (s1_8 ^ s1_4 ^ s1) ^ (s2_8 ^ s2) ^ (s3_8 ^ s3_2 ^ s3);
+
+//         state[0][c] = t0;
+//         state[1][c] = t1;
+//         state[2][c] = t2;
+//         state[3][c] = t3;
+//     }
+// }
+//t2：修正s0和s3的系数为0x0d和0x0b。
+
+//t3：修正各系数为0x0b、0x0d、0x09、0x0e
 static void inv_mix_columns(unsigned char state[4][NB]) {
     for (int c = 0; c < NB; c++) {
         unsigned char s0 = state[0][c];
@@ -278,10 +312,11 @@ static void inv_mix_columns(unsigned char state[4][NB]) {
         unsigned char s3_4 = xtime(s3_2);
         unsigned char s3_8 = xtime(s3_4);
 
+        // 修正后的项组合
         unsigned char t0 = (s0_8 ^ s0_4 ^ s0_2) ^ (s1_8 ^ s1_2 ^ s1) ^ (s2_8 ^ s2_4 ^ s2) ^ (s3_8 ^ s3);
         unsigned char t1 = (s0_8 ^ s0) ^ (s1_8 ^ s1_4 ^ s1_2) ^ (s2_8 ^ s2_2 ^ s2) ^ (s3_8 ^ s3_4 ^ s3);
-        unsigned char t2 = (s0_8 ^ s0_2 ^ s0) ^ (s1_8 ^ s1) ^ (s2_8 ^ s2_4 ^ s2_2) ^ (s3_8 ^ s3_4 ^ s3);
-        unsigned char t3 = (s0_8 ^ s0_4 ^ s0) ^ (s1_8 ^ s1_4 ^ s1) ^ (s2_8 ^ s2) ^ (s3_8 ^ s3_2 ^ s3);
+        unsigned char t2 = (s0_8 ^ s0_4 ^ s0) ^ (s1_8 ^ s1) ^ (s2_8 ^ s2_4 ^ s2_2) ^ (s3_8 ^ s3_2 ^ s3);
+        unsigned char t3 = (s0_8 ^ s0_2 ^ s0) ^ (s1_8 ^ s1_4 ^ s1) ^ (s2_8 ^ s2) ^ (s3_8 ^ s3_4 ^ s3_2);
 
         state[0][c] = t0;
         state[1][c] = t1;
